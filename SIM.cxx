@@ -6,7 +6,34 @@
 #include <cmath>
 #include <iomanip>
 #include <thread>
+#include <cassert>
 using namespace std;
+
+class RandomFile{
+    public:
+        ifstream r;
+        RandomFile(string filename){
+            r = ifstream(filename, std::ifstream::in);
+            if(!r){
+                cerr << "Error opening random file" << endl;
+                ::exit(1);
+            }
+        }
+        double getU(){
+            double u = 0.0;
+            if(!r.eof()) {
+                r >> u;
+            }
+            else{
+                cerr << "Ran out of random numbers" << endl;
+                ::exit(1);
+            }
+            return u;
+        }
+        ~RandomFile(){
+            r.close();
+        }
+};
 
 //struct to hold event information
 struct Event{
@@ -62,7 +89,7 @@ int getNumberOfPedestrians(double u, int upper){
             d++;
         }
     }
-    else if(calcGeometricFd(d-1, upper) > u){
+    else if(calcGeometricFd(1, upper) <= u){
         while(calcGeometricFd(d-1, upper) > u){
             d--;
         }
@@ -136,39 +163,8 @@ class Welford{
         }
 };
 
-int main( int argc, char* argv[] ){
-	int numFLOORS;
-	int ELEVATORS;
-	int DAYS;
-
-	//argument number 1 is number of floors
-	numFLOORS = stoi(argv[1]);
-	//argument number 2 is number of elevators
-	ELEVATORS = stoi(argv[2]);
-	//argument number 3 is random file
-    ifstream randomFile(argc > 3 ? argv[3] : "/dev/null");
-    if(!randomFile){
-        cerr << "Error opening random file" << endl;
-        ::exit(1);
-    }
-    //argument 4 is number of days to run simulation
-	DAYS = stoi(argv[4]);
-
-    //max number of people that are waiting on elevator across all days
-    int MAXQ = 0;
-
-    vector<int> optimalTimes;
-    for(int i = 0; i < numFLOORS; i++){
-        optimalTimes.push_back(getElevatorTime(i + 1) + getLoadTime(1) * 2);
-    }
-
-    int numStops = 0;
-
-    Welford w;
-
-    for(int j = 0; j < DAYS; j++) {
-
-        //initialize simulation clock to 0
+void runSim(Welford &w, RandomFile &r, int numFLOORS, int ELEVATORS, int &MAXQ, int &numStops, vector<int> optimalTimes, int d){
+    //initialize simulation clock to 0
         double t = 0;
 
         int FLOORS = numFLOORS;
@@ -181,22 +177,8 @@ int main( int argc, char* argv[] ){
             elevatorStatus.push_back(true);
         }
 
-        double random = 0.0;
-        if(!randomFile.eof()) {
-            randomFile >> random;
-        }
-        else{
-            cerr << "Ran out of random numbers" << endl;
-            ::exit(1);
-        }
-        double u = 0.0;
-        if(!randomFile.eof()) {
-            randomFile >> u;
-        }
-        else{
-            cerr << "Ran out of random numbers" << endl;
-            ::exit(1);
-        }
+        double random = r.getU();
+        double u = r.getU();
 
 
         //initialize elevators to have nobody in them
@@ -209,7 +191,7 @@ int main( int argc, char* argv[] ){
         Event firstArrival = {"groupArrival", getPedestrianArrivalTime(u), getNumberOfPedestrians(random, 8),0,0};
         eventList.push(firstArrival);
 
-        queue <Person> pedestrianQueue;
+        queue <Person> pedestrianQueue = queue<Person>();
 
         vector<Floor> availableFloors;
         for(int i = 0; i < FLOORS;i++){
@@ -226,6 +208,8 @@ int main( int argc, char* argv[] ){
             eventList.pop();
             t = currentEvent.at;
 
+            assert(remainingPeople >= 0);
+
             //Event type switch case
             if(currentEvent.type == "groupArrival") {
                 cout << "Group of " << currentEvent.numberOfPeople << " Arrived at time " << currentEvent.at << endl;
@@ -238,15 +222,7 @@ int main( int argc, char* argv[] ){
                 //Assign at as currentEvent.at and choose their desired floor
                 for(int i = 0; i < groupSize; i++){
                     
-                    double u = 0.0;
-
-                    if(!randomFile.eof()) {
-                        randomFile >> u;
-                    }
-                    else{
-                        cerr << "Ran out of random numbers" << endl;
-                        ::exit(1);
-                    }
+                    double u = r.getU();
 
                     int destFloor = Equilikely(0, FLOORS - 1, u);
                     int selectedFloor = availableFloors[destFloor].floorNumber;
@@ -267,23 +243,8 @@ int main( int argc, char* argv[] ){
                 //Schedule next arrival if people still remaining
                 if(remainingPeople > 0){
 
-                    double u = 0.0;
-                    if(!randomFile.eof()) {
-                        randomFile >> u;
-                    }
-                    else{
-                        cerr << "Ran out of random numbers" << endl;
-                        ::exit(1);
-                    }
-
-                    double v = 0.0;
-                    if(!randomFile.eof()) {
-                        randomFile >> v;
-                    }
-                    else{
-                        cerr << "Ran out of random numbers" << endl;
-                        ::exit(1);
-                    }
+                    double u = r.getU();
+                    double v = r.getU();
 
                     if(remainingPeople < 8){
                         Event nextArrival = {"groupArrival",
@@ -344,6 +305,7 @@ int main( int argc, char* argv[] ){
                             nextFloor = elevatorLoads[currentEvent.elevator - 1][i].desiredFloor;
                         }
                     }
+
                     //Compute distance and calculate time for next drop off
                     //see how many people are going to each floor
                     int nextGroup = 0;
@@ -354,6 +316,8 @@ int main( int argc, char* argv[] ){
                             group.push_back(elevatorLoads[currentEvent.elevator - 1][i]);
                         }
                     }
+
+                    assert(currentEvent.floor < nextFloor);
                     //schedule next drop off
                     int totalElevatorTime;
                     int unloadTime = getLoadTime(peopleGettingOff);
@@ -367,11 +331,14 @@ int main( int argc, char* argv[] ){
                     Event returnToLobby = {"elevatorReturnToLobby", t + totalElevatorTime, 0, 0, currentEvent.elevator};
                     eventList.push(returnToLobby);
                 }
+                assert(currentEvent.numberOfPeople != 0);
                 numStops++;
             }
             else if(currentEvent.type == "elevatorReturnToLobby") {
                 cout << "Elevator " << currentEvent.elevator << " returned to the lobby at " << currentEvent.at << endl;
-
+                //Test to see if any one is left in elevator
+                assert(elevatorLoads[currentEvent.elevator - 1].size() == 0);
+                assert(currentEvent.numberOfPeople == 0);
                 //mark that elevator as available
                 int elevatorIndex = currentEvent.elevator - 1;
                 elevatorStatus[elevatorIndex] = true;
@@ -382,7 +349,7 @@ int main( int argc, char* argv[] ){
                 cout << "Elevator " << currentEvent.elevator << " loaded up with " << currentEvent.numberOfPeople << " people at " << currentEvent.at << endl;
                 int groupSize = currentEvent.numberOfPeople;
 
-                //see how many people are goinf to each floor
+                //see how many people are going to each floor
                 int nextFloor = 9999;
                 for(int i = 0; i < elevatorLoads[currentEvent.elevator - 1].size(); i++){
                     if(elevatorLoads[currentEvent.elevator - 1][i].desiredFloor < nextFloor){
@@ -419,8 +386,10 @@ int main( int argc, char* argv[] ){
 
                 //if elevators are available load as many as you can
                 if(available){
+
                     int spaceLeft = elevatorNumbers.size() * 10;
                     int elevatorIndex = 0;
+
                     while(pedestrianQueue.size() > 0 && spaceLeft > 0){
                         if(elevatorStatus[elevatorIndex]){
                             //get first person based on arrival time
@@ -428,7 +397,6 @@ int main( int argc, char* argv[] ){
                             pedestrianQueue.pop();
 
                             //Put person in elevator
-                            //TODO Sort person by floor thens sort vector
                             elevatorLoads[elevatorIndex].push_back(currentPerson);
 
                             //decrement space left in elevators
@@ -458,13 +426,43 @@ int main( int argc, char* argv[] ){
             }
             cout << "Queue size: " << pedestrianQueue.size() << endl;
             
-            //check to see for new maxQ
             if(pedestrianQueue.size() > MAXQ){
                 MAXQ = pedestrianQueue.size();
             }
-
         }
-        cout << "DAY " << j + 1<< " Average: " << w.xibar << " STD: " << w.getStandardDeviation() << " STOPS: " << (double)numStops / ((double)(j + 1) * ELEVATORS) << endl;
+}
+
+int main( int argc, char* argv[] ){
+	int numFLOORS;
+	int ELEVATORS;
+	int DAYS;
+
+	//argument number 1 is number of floors
+	numFLOORS = stoi(argv[1]);
+	//argument number 2 is number of elevators
+	ELEVATORS = stoi(argv[2]);
+	//argument number 3 is random file
+    string filename(argc > 3 ? argv[3] : "/dev/null");
+    
+    //argument 4 is number of days to run simulation
+	DAYS = stoi(argv[4]);
+
+    //max number of people that are waiting on elevator across all days
+    int MAXQ = 0;
+
+    vector<int> optimalTimes;
+    for(int i = 0; i < numFLOORS; i++){
+        optimalTimes.push_back(getElevatorTime(i + 1) + getLoadTime(1) * 2);
+    }
+
+    int numStops = 0;
+
+    Welford w;
+    RandomFile r(filename);
+
+    //run sim over number of days
+    for(int j = 0; j < DAYS; j++) {
+        runSim(w, r, numFLOORS, ELEVATORS, MAXQ, numStops, optimalTimes, j + 1);
     }
 
     double averageStops = (double)numStops / ((double)DAYS * ELEVATORS);
@@ -475,6 +473,7 @@ int main( int argc, char* argv[] ){
     cout << "OUTPUT max qsize " << fixed << setprecision(5) << MAXQ << endl;
     cout << "OUTPUT average delay "<< fixed << setprecision(5)  << w.xibar << endl;
     cout << "OUTPUT stddev delay " << fixed << setprecision(5) << w.getStandardDeviation() << endl;
+
 	return 0;
 }
 
