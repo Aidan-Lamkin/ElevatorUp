@@ -20,8 +20,6 @@ struct Event{
     int floor;
     //which elevator the event is using
     int elevator;
-    //int number of stops while unloading
-    int numberOfStops;
 
     bool operator<( const Event& rhs ) const {
         // .at is activation time of the event
@@ -41,7 +39,6 @@ struct Person{
 };
 
 double Uniform(double alpha, double beta, double u){
-    cout << "alpha: " << alpha << " beta: " << beta << " u: " << u << endl;
     return alpha + (beta - alpha) * u;
 }
 
@@ -91,10 +88,7 @@ double getPedestrianArrivalTime(double u){
 
     double v = Uniform(alpha, F90, u);
 
-    cout << "AT: " << idfExponential(v) << "V: " << v << endl;;
-
     return idfExponential(v);
-    //return 14.0362116;
 }
 
 double getElevatorTime(int h){
@@ -117,18 +111,6 @@ double getLoadTime(int nPassengers){
         return 22;
     }
 }
-
-// //comparison class used for priority queue
-// class ComparisonClass {
-// public:
-//     bool operator()(const Event& lhs, const Event& rhs){
-//         return lhs.at > rhs.at;
-//     }
-
-//     bool operator()(const Person& lhs, const Person rhs){
-//         return lhs.at > rhs.at; 
-//     }
-// };
 
 class Floor{
     public:
@@ -154,19 +136,11 @@ class Welford{
         }
 };
 
-//void printQueue(priority_queue<Event,vector<Event>,ComparisonClass> q){
-//     while (!q.empty()){
-//         cout << q.top().type << " " << q.top().at << " " << q.top().elevator << endl;
-//         q.pop();
-//     }
-// }
-
 int main( int argc, char* argv[] ){
 	int numFLOORS;
 	int ELEVATORS;
 	int DAYS;
 
-	
 	//argument number 1 is number of floors
 	numFLOORS = stoi(argv[1]);
 	//argument number 2 is number of elevators
@@ -182,16 +156,6 @@ int main( int argc, char* argv[] ){
 
     //max number of people that are waiting on elevator across all days
     int MAXQ = 0;
-
-    vector<vector<int> > totalStops = vector<vector<int> >();
-    //vector<vector<bool> > totalUsed = vector<vector<bool> >();
-
-    //TODO adjust to time instead of number of stops
-    vector<double> delays = vector<double>();
-    vector<double> averageDelays = vector<double>();
-    vector<double> varianceDelays = vector<double>();
-    averageDelays.push_back(0.0);
-    varianceDelays.push_back(0.0);
 
     vector<int> optimalTimes;
     for(int i = 0; i < numFLOORS; i++){
@@ -211,17 +175,6 @@ int main( int argc, char* argv[] ){
 
         //initialize empty event list
         priority_queue <Event, vector<Event> > eventList = priority_queue <Event, vector<Event> >();
-
-        //number of stops in the day including ground floor
-        vector<int> STOPS = vector<int>();
-        for(int i = 0; i < ELEVATORS; i++){
-            STOPS.push_back(0);
-        }
-
-        // vector<bool> used = vector<bool>();
-        // for(int i = 0; i < ELEVATORS; i++){
-        //     used.push_back(false);
-        // }
 
         vector<bool> elevatorStatus = vector<bool>();
         for( int i = 0; i < ELEVATORS; i++){
@@ -253,7 +206,7 @@ int main( int argc, char* argv[] ){
         }
 
         //initalize first group arrival
-        Event firstArrival = {"groupArrival", getPedestrianArrivalTime(u), getNumberOfPedestrians(random, 8),1,0,0};
+        Event firstArrival = {"groupArrival", getPedestrianArrivalTime(u), getNumberOfPedestrians(random, 8),0,0};
         eventList.push(firstArrival);
 
         queue <Person> pedestrianQueue;
@@ -266,8 +219,6 @@ int main( int argc, char* argv[] ){
         }
 
         int remainingPeople = 100 * FLOORS;
-        int numberWaiting = 0;
-
 
         while (!eventList.empty()) {
             //get imminent event, pop eventList, update sim time
@@ -277,7 +228,7 @@ int main( int argc, char* argv[] ){
 
             //Event type switch case
             if(currentEvent.type == "groupArrival") {
-                cout << "Group of " << currentEvent.numberOfPeople << " Arrived at time " << currentEvent.at << " DAY " << j + 1<< endl;
+                cout << "Group of " << currentEvent.numberOfPeople << " Arrived at time " << currentEvent.at << endl;
 
                 //Get size of group
                 int groupSize = currentEvent.numberOfPeople;
@@ -298,9 +249,7 @@ int main( int argc, char* argv[] ){
                     }
 
                     int destFloor = Equilikely(0, FLOORS - 1, u);
-                    //cout << "Dest Floor: " << destFloor << endl;
                     int selectedFloor = availableFloors[destFloor].floorNumber;
-                    cout << "Selected floor: " << selectedFloor << endl;
 
                     availableFloors[destFloor].capacity--;
 
@@ -311,7 +260,6 @@ int main( int argc, char* argv[] ){
                     }
 
                     pedestrianQueue.push({t, selectedFloor});
-                    //numberWaiting++;
                 }
 
                 cout << "Remaining People " << remainingPeople << endl;
@@ -341,7 +289,7 @@ int main( int argc, char* argv[] ){
                         Event nextArrival = {"groupArrival",
                                              t + getPedestrianArrivalTime(v),
                                              getNumberOfPedestrians(u, remainingPeople),
-                                             1,
+                                             0,
                                              0};
                         eventList.push(nextArrival);
                     }
@@ -349,7 +297,7 @@ int main( int argc, char* argv[] ){
                         Event nextArrival = {"groupArrival",
                                              t + getPedestrianArrivalTime(v),
                                              getNumberOfPedestrians(u, 8),
-                                             1,
+                                             0,
                                              0};
                         eventList.push(nextArrival);
                     }
@@ -370,14 +318,10 @@ int main( int argc, char* argv[] ){
                 }
                 int unloadTime = getLoadTime(peopleGettingOff);
                 //delay data
-                //Must consider time to get off and current sim time
                 for(int k = 0; k < group.size(); k++){
                     double delayTime = (double)((t + unloadTime - group[k].at) - optimalTimes[currentEvent.floor - 1]) / (double)optimalTimes[currentEvent.floor - 1];
                     w.addDataPoint(delayTime);
                     cout << "Delay Time: " << delayTime << " unload time " << unloadTime << " arrival time " << group[k].at << " optimal time " << optimalTimes[currentEvent.floor - 1] << " sim time " << t << endl;
-                    //delays.push_back(delayTime);
-                    //averageDelays.push_back(averageDelays[averageDelays.size() - 1] + (1.0 / (double)averageDelays.size()) * (unload.numberOfStops - averageDelays[averageDelays.size() - 1]));
-                    //varianceDelays.push_back(varianceDelays[varianceDelays.size() - 1] + ((double)(varianceDelays.size()) - 1.0 / (double)(varianceDelays.size())) * pow((unload.numberOfStops - averageDelays[averageDelays.size() - 2]),2));
                 }
 
                 //remove people getting off for this elevator
@@ -391,9 +335,7 @@ int main( int argc, char* argv[] ){
                     }
                 }
 
-                
-
-                //TODO if elevator still has people on it schedule next drop off else schedule return
+                //If elevator still has people on it schedule next drop off else schedule return
                 if(elevatorLoads[currentEvent.elevator - 1].size() != 0){
                     //find next floor
                     int nextFloor = 9999;
@@ -402,7 +344,7 @@ int main( int argc, char* argv[] ){
                             nextFloor = elevatorLoads[currentEvent.elevator - 1][i].desiredFloor;
                         }
                     }
-                    //TODO compute distance and calculate time for next drop off
+                    //Compute distance and calculate time for next drop off
                     //see how many people are going to each floor
                     int nextGroup = 0;
                     vector<Person> group;
@@ -416,7 +358,7 @@ int main( int argc, char* argv[] ){
                     int totalElevatorTime;
                     int unloadTime = getLoadTime(peopleGettingOff);
                     totalElevatorTime = getLoadTime(peopleGettingOff) + getElevatorTime(nextFloor - currentEvent.floor);
-                    Event unload = {"elevatorUnloadAtFloor", t + totalElevatorTime, nextGroup, nextFloor, currentEvent.elevator, currentEvent.numberOfStops + 1};
+                    Event unload = {"elevatorUnloadAtFloor", t + totalElevatorTime, nextGroup, nextFloor, currentEvent.elevator};
                     eventList.push(unload);
                 }
                 else{
@@ -425,8 +367,6 @@ int main( int argc, char* argv[] ){
                     Event returnToLobby = {"elevatorReturnToLobby", t + totalElevatorTime, 0, 0, currentEvent.elevator};
                     eventList.push(returnToLobby);
                 }
-                //increment number of stops for this elevator by 1
-                //STOPS[currentEvent.elevator - 1] += 1;
                 numStops++;
             }
             else if(currentEvent.type == "elevatorReturnToLobby") {
@@ -435,18 +375,12 @@ int main( int argc, char* argv[] ){
                 //mark that elevator as available
                 int elevatorIndex = currentEvent.elevator - 1;
                 elevatorStatus[elevatorIndex] = true;
-
-                //increment number of stops for this elevator by 1
-                //STOPS[currentEvent.elevator - 1] += 1;
                 numStops++;
             }
             else if(currentEvent.type == "elevatorLoadUp") {
                 //log message
                 cout << "Elevator " << currentEvent.elevator << " loaded up with " << currentEvent.numberOfPeople << " people at " << currentEvent.at << endl;
                 int groupSize = currentEvent.numberOfPeople;
-
-                //mark this elevator as used for today
-                //used[currentEvent.elevator - 1] = true;
 
                 //see how many people are goinf to each floor
                 int nextFloor = 9999;
@@ -466,7 +400,7 @@ int main( int argc, char* argv[] ){
                 //schedule next drop off
                 int totalElevatorTime;
                 totalElevatorTime = getLoadTime(groupSize) + getElevatorTime(nextFloor - currentEvent.floor);
-                Event unload = {"elevatorUnloadAtFloor", t + totalElevatorTime, nextGroup, nextFloor, currentEvent.elevator, currentEvent.numberOfStops + 1};
+                Event unload = {"elevatorUnloadAtFloor", t + totalElevatorTime, nextGroup, nextFloor, currentEvent.elevator};
                 eventList.push(unload);
             }
 
@@ -499,7 +433,6 @@ int main( int argc, char* argv[] ){
 
                             //decrement space left in elevators
                             spaceLeft--;
-                            // numberWaiting--;
                         }
                         //increment which elevator is chosen and wrap around
                         elevatorIndex++;
@@ -520,6 +453,7 @@ int main( int argc, char* argv[] ){
                             eventList.push(loadUp);
                         }
                     }
+
                 }
             }
             cout << "Queue size: " << pedestrianQueue.size() << endl;
@@ -530,20 +464,8 @@ int main( int argc, char* argv[] ){
             }
 
         }
-        //totalStops.push_back(STOPS);
-        //totalUsed.push_back(used);
+        cout << "DAY " << j + 1<< " Average: " << w.xibar << " STD: " << w.getStandardDeviation() << " STOPS: " << (double)numStops / ((double)(j + 1) * ELEVATORS) << endl;
     }
-
-
-    //display output
-    //calculate the average stops per elevator per day
-    //int sum = 0;
-    // int count = 0;
-    // for(int i = 0; i < DAYS; i++){
-    //     for(int j = 0; j < ELEVATORS; j++){   
-    //         sum += totalStops[i][j];
-    //     }
-    // }
 
     double averageStops = (double)numStops / ((double)DAYS * ELEVATORS);
 
